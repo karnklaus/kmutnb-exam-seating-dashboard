@@ -4,6 +4,8 @@ Web dashboard for searching exam seating data from:
 - ENG KMUTNB exam seating service
 - SCIBASE examroom service
 
+Thai version: [README.th.md](README.th.md)
+
 ## Features
 - Search by student ID (input can include separators; app sanitizes before search)
 - Merge exam seating records from multiple sources
@@ -40,19 +42,6 @@ Web dashboard for searching exam seating data from:
    ```
 4. Open browser
    - `http://127.0.0.1:5000`
-
-## API Endpoints
-- `GET /` - dashboard page
-- `POST /api/search-seating`
-  - body:
-    ```json
-    { "student_id": "<13-digit-student-id>" }
-    ```
-- `POST /api/debug/scibase` (debug helper)
-  - body:
-    ```json
-    { "student_id": "<13-digit-student-id>" }
-    ```
 
 ## Notes
 - This project scrapes source websites, so HTML changes on source pages may require parser updates.
