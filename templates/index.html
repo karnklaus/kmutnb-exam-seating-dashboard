@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exam Seating Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700&family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <section class="top-hero">
+    <div class="hero-overlay">
+      <div class="hero-left">
+        <div class="hero-th">มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าพระนครเหนือ</div>
+        <div class="hero-en">KING MONGKUT'S UNIVERSITY OF TECHNOLOGY NORTH BANGKOK</div>
+        <div class="hero-sub">Exam Seating Dashboard</div>
+      </div>
+    </div>
+  </section>
+  <main class="container">
+    <section class="hero">
+      <h1>Exam Seating Dashboard</h1>
+      <p>ค้นหาข้อมูลที่นั่งสอบจาก ENG KMUTNB และ SCIBASE</p>
+    </section>
+
+    <section class="search-panel">
+      <form id="searchForm">
+        <label for="student_id">รหัสนักศึกษา (13 หลัก)</label>
+        <div class="row">
+          <input id="student_id" name="student_id" placeholder="เช่น 6601012630025" required />
+          <button type="submit">ค้นหา</button>
+        </div>
+      </form>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="stats" id="stats" hidden>
+      <div class="card"><span>รหัส</span><strong id="stStudent"></strong></div>
+      <div class="card"><span>จำนวนรายการ</span><strong id="stCount"></strong></div>
+      <div class="card"><span>ข้อมูลจาก cache</span><strong id="stCached"></strong></div>
+    </section>
+
+    <section id="resultsWrap" hidden>
+      <h2>ผลการค้นหา</h2>
+      <div class="result-header">
+        <span>Source</span>
+        <span>ชื่อ</span>
+        <span>รายละเอียด</span>
+      </div>
+      <div id="cardsWrap" class="cards-wrap"></div>
+    </section>
+
+    <section id="errorWrap" hidden>
+      <h2>ข้อสังเกต</h2>
+      <ul id="errorList"></ul>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('searchForm');
+    const studentInput = document.getElementById('student_id');
+    const statusEl = document.getElementById('status');
+    const statsEl = document.getElementById('stats');
+    const resultsWrap = document.getElementById('resultsWrap');
+    const cardsWrap = document.getElementById('cardsWrap');
+    const errorWrap = document.getElementById('errorWrap');
+    const errorList = document.getElementById('errorList');
+
+    function setStatus(message, isError = false) {
+      statusEl.textContent = message;
+      statusEl.className = isError ? 'status error' : 'status';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function parseSeatCode(seatNo) {
+      const clean = String(seatNo || '').trim().toUpperCase();
+      const m = clean.match(/^([A-Z])\s*[- ]?\s*(\d{1,2})$/);
+      if (m) {
+        return { seatLabel: `${m[1]}${m[2]}`, row: m[1], col: Number(m[2]), rowType: 'alpha' };
+      }
+      const n = clean.match(/^(\d{1,3})\s*-\s*(\d{1,3})$/);
+      if (n) {
+        return { seatLabel: `${n[1]}-${n[2]}`, row: n[1], col: Number(n[2]), rowType: 'numeric' };
+      }
+      return null;
+    }
+
+    function formatSeatCell(row) {
+      const parsed = parseSeatCode(row.seat_no);
+      if (!parsed) return escapeHtml(row.seat_no || '-');
+      return `Seat: ${parsed.seatLabel} (Row \u2192 ${parsed.row}, Column \u2193 ${parsed.col})`;
+    }
+
+    function buildSeatMap(parsedSeat) {
+      const baseRows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+      const targetRowCode = parsedSeat.row.charCodeAt(0);
+      const lastBaseCode = 'I'.charCodeAt(0);
+      const endCode = Math.max(lastBaseCode, targetRowCode);
+      const rows = [];
+      for (let code = 'A'.charCodeAt(0); code <= endCode; code += 1) {
+        rows.push(String.fromCharCode(code));
+      }
+      const maxCol = Math.max(6, parsedSeat.col);
+      const colHeader = Array.from({ length: maxCol }, (_, i) => `<span>${i + 1}</span>`).join('');
+
+      const gridRows = rows.map((r) => {
+        const cells = Array.from({ length: maxCol }, (_, i) => {
+          const c = i + 1;
+          const active = (r === parsedSeat.row && c === parsedSeat.col);
+          const cls = active ? 'seat-cell active' : 'seat-cell';
+          return `<span class="${cls}" title="${r}${c}">${active ? '&#128100;' : ''}</span>`;
+        }).join('');
+        return `<div class="seat-grid-row"><div class="seat-grid-label">${r}</div><div class="seat-grid-cells">${cells}</div></div>`;
+      }).join('');
+
+      return `
+        <div class="seat-map-wrap">
+          <div class="seat-board">กระดาน (Board) &#8595;</div>
+          <div class="seat-grid">
+            <div class="seat-grid-header"><span class="seat-grid-label"></span><div class="seat-grid-cols">${colHeader}</div></div>
+            ${gridRows}
+          </div>
+          <div class="seat-legend">
+            <span><span class="seat-cell active">&#128100;</span> Your seat</span>
+            <span><span class="seat-cell"></span> Other seats</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function roomText(row) {
+      const building = String(row.building || '').trim();
+      const room = String(row.room || '').trim();
+      if (building && room) {
+        if (room.startsWith(`${building}-`)) return room;
+        return `${building}-${room}`;
+      }
+      return room || '-';
+    }
+
+    function renderCards(records) {
+      return records.map((row, idx) => {
+        const source = String(row.source || '');
+        const parsedSeat = parseSeatCode(row.seat_no);
+        const canShowMap = source === 'ENG' && parsedSeat;
+        const mapId = `seat-map-${idx}`;
+        const actionBtn = canShowMap
+          ? `<button type="button" class="seat-map-btn" data-map-id="${mapId}">ดูผังที่นั่ง</button>`
+          : '';
+        const subjectCode = escapeHtml(row.subject_code || '-');
+        const subjectName = escapeHtml(row.subject_name || '-');
+        const examDate = escapeHtml(row.exam_date || '-');
+        const examTime = escapeHtml(row.exam_time || '-');
+        const room = escapeHtml(roomText(row));
+        const seat = formatSeatCell(row);
+
+        return `
+          <div class="result-item">
+            <article class="result-card">
+              <div class="result-cell source-cell">${escapeHtml(row.source || '-')}</div>
+              <div class="result-cell name-cell">${escapeHtml(row.student_name || '-')}</div>
+              <div class="result-cell detail-cell">
+                <h3>${subjectCode} ${subjectName}</h3>
+                <p class="result-date">${examDate} [${examTime}]</p>
+                <p class="result-meta">
+                  <span>Room : <strong>${room}</strong></span>
+                  <span>|</span>
+                  <span>${seat}</span>
+                  ${actionBtn ? '<span>|</span>' : ''}
+                  ${actionBtn}
+                </p>
+              </div>
+            </article>
+            ${canShowMap ? `<div id="${mapId}" class="outside-map" hidden>${buildSeatMap(parsedSeat)}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    cardsWrap.addEventListener('click', (event) => {
+      const btn = event.target.closest('.seat-map-btn');
+      if (!btn) return;
+      const mapEl = document.getElementById(btn.dataset.mapId);
+      if (!mapEl) return;
+      const isHidden = mapEl.hidden;
+      mapEl.hidden = !isHidden;
+      btn.textContent = isHidden ? 'ซ่อนผังที่นั่ง' : 'ดูผังที่นั่ง';
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const studentId = studentInput.value.replace(/\D/g, '').slice(0, 13);
+      studentInput.value = studentId;
+
+      if (!/^\d{13}$/.test(studentId)) {
+        setStatus('กรุณากรอกรหัสนักศึกษาให้ครบ 13 หลัก', true);
+        return;
+      }
+
+      setStatus('กำลังค้นหา...');
+      statsEl.hidden = true;
+      resultsWrap.hidden = true;
+      errorWrap.hidden = true;
+      cardsWrap.innerHTML = '';
+      errorList.innerHTML = '';
+
+      try {
+        const response = await fetch('/api/search-seating', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ student_id: studentId })
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || 'เกิดข้อผิดพลาดจาก API');
+        }
+
+        document.getElementById('stStudent').textContent = payload.student_id;
+        document.getElementById('stCount').textContent = payload.count;
+        document.getElementById('stCached').textContent = payload.cached ? 'Yes' : 'No';
+        statsEl.hidden = false;
+
+        if (payload.records.length) {
+          cardsWrap.innerHTML = renderCards(payload.records);
+          resultsWrap.hidden = false;
+          setStatus('ค้นหาเสร็จแล้ว');
+        } else {
+          setStatus('ไม่พบข้อมูลที่นั่งสอบสำหรับรหัสนี้');
+        }
+
+        if (payload.errors.length) {
+          errorList.innerHTML = payload.errors.map((err) => `<li>${err}</li>`).join('');
+          errorWrap.hidden = false;
+        }
+      } catch (error) {
+        setStatus(error.message || 'ไม่สามารถเชื่อมต่อ API ได้', true);
+      }
+    });
+  </script>
+</body>
+</html>
