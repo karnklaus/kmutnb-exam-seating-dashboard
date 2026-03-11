@@ -46,12 +46,12 @@ Web dashboard for searching exam seating data from:
 - `POST /api/search-seating`
   - body:
     ```json
-    { "student_id": "6601012630025" }
+    { "student_id": "<13-digit-student-id>" }
     ```
 - `POST /api/debug/scibase` (debug helper)
   - body:
     ```json
-    { "student_id": "6601012630025" }
+    { "student_id": "<13-digit-student-id>" }
     ```
 
 ## Notes
